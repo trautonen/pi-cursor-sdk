@@ -426,7 +426,7 @@ describe("extension registration and discovery", () => {
 			createExtensionTestContext({ ui: { notify: vi.fn(), setStatus: vi.fn(), select, input } }),
 		);
 
-		expect(select).toHaveBeenCalledWith("What kind of calculator should Cursor plan?", ["Web app", "CLI"]);
+		expect(select).toHaveBeenCalledWith("What kind of calculator should Cursor plan?", ["Web app", "CLI"], undefined);
 		expect(input).not.toHaveBeenCalled();
 		expect(result.content).toEqual([{ type: "text", text: "User answered: Web app" }]);
 		expect(result.details).toMatchObject({
@@ -454,7 +454,7 @@ describe("extension registration and discovery", () => {
 		);
 		unsubscribe();
 		expect(listenerPayloads).toEqual([{ active: true }, { active: false }]);
-		expect(selectAgain).toHaveBeenCalledWith("Again?", ["Yes"]);
+		expect(selectAgain).toHaveBeenCalledWith("Again?", ["Yes"], undefined);
 		expect(deliveryResult.content).toEqual([{ type: "text", text: "User answered: Yes" }]);
 		expect(deliveryResult.details).toMatchObject({
 			uiAvailable: true,

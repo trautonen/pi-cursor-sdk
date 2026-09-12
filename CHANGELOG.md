@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Forward the tool abort signal from `cursor_ask_question` to pi's UI dialogs, so an unanswered question can be dismissed with Esc instead of holding the Cursor pi bridge call until the bridge call timeout, and remaining questions are skipped once the turn is aborted.
+
 ## 0.3.6 - 2026-08-18
 
 ### Fixed
