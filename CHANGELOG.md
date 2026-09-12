@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Scrub raw SDK errors recorded into `PI_CURSOR_SDK_EVENT_DEBUG` artifacts through the canonical secret scrubber, so authorization headers, bearer tokens, cookies, and bridge endpoints carried on transport errors are not written verbatim into the working tree.
+
 ## 0.3.6 - 2026-08-18
 
 ### Fixed

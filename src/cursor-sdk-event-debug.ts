@@ -8,6 +8,7 @@ import { serializeCursorPiToolBridgeDiagnostic } from "./cursor-pi-tool-bridge-d
 import type { CursorPiBridgeToolRequest } from "./cursor-pi-tool-bridge-types.js";
 import type { CursorLiveQueuedEvent } from "./cursor-live-run-coordinator.js";
 import { asRecord } from "./cursor-record-utils.js";
+import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 import { getCursorSessionFile } from "./cursor-session-scope.js";
 import { parseEnvBoolean } from "./cursor-env-boolean.js";
 import {
@@ -138,6 +139,20 @@ function serializeCursorSdkEventDebugRecord(record: unknown): string {
 		}) ?? JSON.stringify({ type: "artifact_serialization_error" });
 	} catch {
 		return JSON.stringify({ type: "artifact_serialization_error" });
+	}
+}
+
+/**
+ * Scrub a raw error value by round-tripping its serialization through the canonical
+ * secret scrubber. Errors thrown by the SDK/transport can embed request headers and
+ * bridge endpoints, and these artifacts are written into the working tree.
+ */
+function scrubSerializedCursorSdkEventDebugValue(value: unknown): unknown {
+	const serialized = serializeCursorSdkEventDebugRecord(value);
+	try {
+		return JSON.parse(scrubSensitiveText(serialized)) as unknown;
+	} catch {
+		return { type: "artifact_scrub_error" };
 	}
 }
 
@@ -387,11 +402,14 @@ export class CursorSdkEventDebugSink {
 
 	recordError(label: string, error: unknown): void {
 		this.counts.errors += 1;
+		// Raw SDK/transport errors can carry request headers, bridge endpoints, and
+		// key material. Debug artifacts land in the working tree, so scrub before
+		// they are written even though the key itself is not threaded in here.
 		const payload = {
 			label,
-			message: error instanceof Error ? error.message : String(error),
-			stack: error instanceof Error ? error.stack : undefined,
-			value: error,
+			message: scrubSensitiveText(error instanceof Error ? error.message : String(error)),
+			stack: error instanceof Error && error.stack ? scrubSensitiveText(error.stack) : undefined,
+			value: scrubSerializedCursorSdkEventDebugValue(error),
 		};
 		this.appendJsonl(ARTIFACTS.errors, "error", payload, { [label]: 1 }, label);
 	}
