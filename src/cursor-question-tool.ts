@@ -153,17 +153,25 @@ function buildDetails(questions: CursorQuestion[], answers: CursorQuestionAnswer
 	};
 }
 
-async function askOneQuestion(question: CursorQuestion, ctx: { ui: ExtensionContext["ui"] }): Promise<CursorQuestionAnswer> {
+async function askOneQuestion(
+	question: CursorQuestion,
+	ctx: { ui: ExtensionContext["ui"] },
+	signal?: AbortSignal,
+): Promise<CursorQuestionAnswer> {
+	// pi dismisses an open dialog on this signal. Without it an unattended question
+	// keeps the Cursor bridge call parked until the bridge call timeout, and Esc on
+	// the pi turn cannot take the prompt down.
+	const dialogOptions = signal ? { signal } : undefined;
 	if (question.options.length > 0) {
 		const labels = question.options.map((option) => option.description ? `${option.label} — ${option.description}` : option.label);
 		const customLabel = "Type a custom answer";
 		const choices = question.allowCustom ? [...labels, customLabel] : labels;
-		const selected = await ctx.ui.select(question.question, choices);
+		const selected = await ctx.ui.select(question.question, choices, dialogOptions);
 		if (!selected) {
 			return { id: question.id, question: question.question, answer: null, wasCustom: false, cancelled: true };
 		}
 		if (selected === customLabel) {
-			const customAnswer = await ctx.ui.input(question.question, "Type your answer");
+			const customAnswer = await ctx.ui.input(question.question, "Type your answer", dialogOptions);
 			const trimmed = customAnswer?.trim();
 			return trimmed
 				? { id: question.id, question: question.question, answer: trimmed, value: trimmed, wasCustom: true, cancelled: false }
@@ -182,7 +190,7 @@ async function askOneQuestion(question: CursorQuestion, ctx: { ui: ExtensionCont
 		};
 	}
 
-	const answer = await ctx.ui.input(question.question, "Type your answer");
+	const answer = await ctx.ui.input(question.question, "Type your answer", dialogOptions);
 	const trimmed = answer?.trim();
 	return trimmed
 		? { id: question.id, question: question.question, answer: trimmed, value: trimmed, wasCustom: true, cancelled: false }
@@ -224,7 +232,7 @@ export function registerCursorQuestionTool(pi: CursorQuestionToolExtensionApi): 
 			"Use cursor_ask_question only when running a Cursor model and user input would materially change the plan, scope, platform, or implementation path.",
 			"Prefer cursor_ask_question with 2-4 concrete options instead of guessing when Cursor plan mode needs user choices.",
 		],
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const questions = normalizeQuestions(params as CursorAskQuestionParams);
 			if (questions.length === 0) {
 				throw new Error("No valid question was provided.");
@@ -241,7 +249,8 @@ export function registerCursorQuestionTool(pi: CursorQuestionToolExtensionApi): 
 			try {
 				const answers: CursorQuestionAnswer[] = [];
 				for (const question of questions) {
-					const answer = await askOneQuestion(question, ctx);
+					if (signal?.aborted) break;
+					const answer = await askOneQuestion(question, ctx, signal);
 					answers.push(answer);
 					if (answer.cancelled) break;
 				}
