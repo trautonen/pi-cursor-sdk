@@ -4,12 +4,14 @@ import {
 	type AssistantMessageEventStream,
 	type Context,
 	type Model,
+	type ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import { scheduler } from "node:timers/promises";
 import {
 	CursorLiveRunAbortError,
 	createCursorLiveRunCoordinator,
 	hasTrailingUserMessagesAfterToolResults,
+	matchesCursorLiveRunToolResult,
 	type CursorLiveQueuedEvent,
 	type CursorLiveRun,
 } from "./cursor-live-run-coordinator.js";
@@ -24,7 +26,7 @@ import { applyCursorUsage } from "./cursor-usage-accounting.js";
 import { CursorPartialContentEmitter } from "./cursor-partial-content-emitter.js";
 import { emitDisplayOnlyTraceBlock } from "./cursor-display-only-trace.js";
 import { trimCurrentTurnAlreadyEmittedCursorText } from "./cursor-run-final-text.js";
-import { formatCursorSdkAbortMessage, resolveCursorSdkAbortCause } from "./cursor-provider-errors.js";
+import { CursorConcurrentPiToolTurnError, formatCursorSdkAbortMessage, resolveCursorSdkAbortCause } from "./cursor-provider-errors.js";
 import { formatInactiveCursorReplayTrace } from "./cursor-native-replay-trace.js";
 import { partitionNativeToolsByActiveContext } from "./cursor-native-replay-routing.js";
 import type { CursorSdkEventDebugRecorder } from "./cursor-sdk-event-debug.js";
@@ -70,6 +72,24 @@ export function getPendingCursorLiveRun(context: Context): CursorLiveRun | undef
 
 export function getActiveCursorLiveRunForCurrentScope(): CursorLiveRun | undefined {
 	return cursorLiveRuns.getActiveForScope();
+}
+
+function contextCarriesCursorLiveRunToolResults(run: CursorLiveRun, context: Context): boolean {
+	return context.messages.some((message) =>
+		message.role === "toolResult"
+		&& matchesCursorLiveRunToolResult(run, message as ToolResultMessage, getCursorNativeReplayIdFromToolCallId),
+	);
+}
+
+/**
+ * A turn is foreign to `run` when the run is parked on a pi bridge tool call and this
+ * turn carries none of that run's tool results. The only turns that reach the provider
+ * in that state are started from inside the pi tool the run is waiting on, so adopting
+ * the run would wait for progress that only this caller can produce.
+ */
+export function isForeignConcurrentCursorTurn(run: CursorLiveRun, context: Context): boolean {
+	if (!cursorLiveRuns.isAwaitingPiToolResults(run)) return false;
+	return !contextCarriesCursorLiveRunToolResults(run, context);
 }
 
 function splitTextIntoReplayDeltas(text: string): string[] {
@@ -434,10 +454,19 @@ export async function drainExistingCursorLiveRunBeforeSend(
 ): Promise<LiveRunPreSendOutcome> {
 	turnDebugRecorder?.recordDrainEvent("pre_send_start", {});
 	while (true) {
-		const run = getPendingCursorLiveRun(context) ?? getActiveCursorLiveRunForCurrentScope();
+		const contextRun = getPendingCursorLiveRun(context);
+		const run = contextRun ?? getActiveCursorLiveRunForCurrentScope();
 		if (!run || run.disposed) {
 			turnDebugRecorder?.recordDrainEvent("pre_send_end", { outcome: "continue_send", reason: "no_pending_run" });
 			return "continue_send";
+		}
+		if (!contextRun && isForeignConcurrentCursorTurn(run, context)) {
+			turnDebugRecorder?.recordDrainEvent("pre_send_end", {
+				outcome: "error",
+				runId: run.id,
+				reason: "concurrent_pi_tool_turn",
+			});
+			throw new CursorConcurrentPiToolTurnError();
 		}
 
 		try {

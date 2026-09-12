@@ -64,6 +64,8 @@ export interface CursorPiToolBridgeRun {
 	resolveToolResults(toolResults: readonly ToolResultMessage[]): Promise<void>;
 	resolveToolResultsFromContext(context: Context): Promise<void>;
 	hasPendingPiToolCallId(piToolCallId: string): boolean;
+	/** True while at least one dispatched pi tool call is still awaiting a pi result. */
+	hasPendingPiToolCalls(): boolean;
 	isBridgeMcpToolCall(toolCall: unknown): boolean;
 	setOnToolRequest(handler?: (request: CursorPiBridgeToolRequest) => void): void;
 	setDebugRecorder(recorder?: CursorSdkEventDebugRecorder): void;

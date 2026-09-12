@@ -3,6 +3,22 @@ import type { CursorRuntime } from "./cursor-config.js";
 import { asRecord } from "./cursor-record-utils.js";
 import { scrubSensitiveText } from "./cursor-sensitive-text.js";
 
+export const CONCURRENT_PI_TOOL_CURSOR_TURN_MESSAGE =
+	"Cursor cannot start another turn for this pi session while the active Cursor run is waiting for a pi tool result. This request came from inside that pi tool, so waiting for the run would deadlock the session. Point nested completions (for example pi-web-access summaryModel) at a non-Cursor model, or run them in a separate pi session.";
+
+/**
+ * Raised instead of waiting when a second Cursor turn for the same pi session is
+ * started from inside a pi tool that the active Cursor run is still waiting on.
+ * Waiting there is a circular wait: the run needs the pi tool result, the pi tool
+ * needs this turn. Failing fast keeps the outer run and its pooled agent alive.
+ */
+export class CursorConcurrentPiToolTurnError extends Error {
+	constructor() {
+		super(CONCURRENT_PI_TOOL_CURSOR_TURN_MESSAGE);
+		this.name = "CursorConcurrentPiToolTurnError";
+	}
+}
+
 export const MISSING_CURSOR_API_KEY_MESSAGE =
 	"Cursor SDK runs require a Cursor SDK API key. Cursor Agent CLI/Desktop login is not reused. Run /login -> Use an API key -> Cursor, set CURSOR_API_KEY before starting pi, or restart pi with --api-key.";
 const GENERIC_CURSOR_SDK_ERROR_MESSAGE =
