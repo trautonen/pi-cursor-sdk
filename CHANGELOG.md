@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Fail a nested Cursor turn fast instead of deadlocking the pi session. A Cursor live run parked on a pi bridge tool call is no longer adopted by a turn that carries none of that run's tool results, so a completion started from inside that pi tool (for example `pi-web-access` `summaryModel` or `fetch_content` answer mode pointed at a Cursor model) reports a clear provider error instead of waiting for a run only it can unblock. The outer run, its pooled session agent, and the per-session turn queue all survive.
+
 ## 0.3.6 - 2026-08-18
 
 ### Fixed

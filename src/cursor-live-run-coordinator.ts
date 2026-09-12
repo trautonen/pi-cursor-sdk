@@ -97,6 +97,7 @@ export interface CursorLiveRunCoordinator {
 	getPendingFromContext(context: Context, getReplayId: CursorReplayIdResolver): CursorLiveRun | undefined;
 	getActiveForScope(scopeKey?: string): CursorLiveRun | undefined;
 	isReady(run: CursorLiveRun): boolean;
+	isAwaitingPiToolResults(run: CursorLiveRun): boolean;
 	waitForProgress(run: CursorLiveRun, signal?: AbortSignal): Promise<void>;
 	withRunLease<T>(run: CursorLiveRun, signal: AbortSignal | undefined, body: () => Promise<T>): Promise<T>;
 	requestIdleDispose(run: CursorLiveRun): void;
@@ -445,6 +446,11 @@ export function createCursorLiveRunCoordinator(deps: CursorLiveRunCoordinatorDep
 
 		isReady(run): boolean {
 			return run.disposed || run.pendingEvents.length > 0 || run.done || run.cancelled || run.errorMessage !== undefined;
+		},
+
+		isAwaitingPiToolResults(run): boolean {
+			if (run.disposed || run.done) return false;
+			return [run.bridgeRun, run.sessionBridgeRun].some((bridgeRun) => bridgeRun?.hasPendingPiToolCalls() === true);
 		},
 
 		async waitForProgress(run, signal): Promise<void> {
